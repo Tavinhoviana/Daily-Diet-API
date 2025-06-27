@@ -1,0 +1,13 @@
+services:
+  db:
+    image: mysql:latest
+    restart: always
+    environment:
+      MYSQL_USER: admin1
+      MYSQL_PASSWORD: admin1234
+      MYSQL_DATABASE: daily-diet
+      MYSQL_ROOT_PASSWORD: admin1234
+    ports:
+      - "3307:3306"
+    volumes:
+      - C:/Users/otavi/OneDrive/Área de Trabalho/Python Classes/codigos/Daily Diet API/mysql/:/var/lib/mysql
