@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from models.user import User, Meal
 from database import db
 from flask_login import LoginManager, login_user, current_user, logout_user, login_required
+from datetime import datetime
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "your_secret_key"
@@ -60,24 +61,34 @@ def login():
 
     return jsonify({"message": "Invalid credentials"}), 400
 
-from datetime import datetime
-
-@app.route("/new_meal", methods=["PUT"])
+@app.route("/logout", methods=["POST"])
 @login_required
-def new_meal():
-    data = request.json
+def logout():
+    logout_user()
+    return jsonify({"message": "Logout successful"})
 
+@app.route("/meals", methods=["POST"])
+@login_required
+def create_meal():
+
+    data = request.get_json()
+
+    # Validação básica
     name = data.get("name")
     description = data.get("description")
-    is_on_diet = data.get("is_on_diet", True)
+    datetime_str = data.get("datetime")  # Espera string ISO, ex: "2025-06-29T08:30:00"
+    is_on_diet = data.get("is_on_diet", False)
 
-    if not name:
-        return jsonify({"message": "Name is required"}), 400
+    if not name or not datetime_str:
+        return jsonify({"message": "Missing required fields"}), 400
 
-    # Define a data/hora atual automaticamente
-    meal_datetime = datetime.now()
+    try:
+        meal_datetime = datetime.fromisoformat(datetime_str)
+    except ValueError:
+        return jsonify({"message": "Invalid datetime format"}), 400
 
-    new_meal = Meal(
+    # Cria o objeto meal associado ao current_user.id
+    meal = Meal(
         name=name,
         description=description,
         datetime=meal_datetime,
@@ -85,37 +96,14 @@ def new_meal():
         user_id=current_user.id
     )
 
-    db.session.add(new_meal)
+    db.session.add(meal)
     db.session.commit()
 
-    return jsonify({"message": "Meal registered successfully"}), 201
-
-@app.route("/logout", methods=["GET"])
-@login_required
-def logout():
-    logout_user()
-    return jsonify({"message": "Logout successful"})
-
-@app.route("/list_meal", methods=["GET"])
-@login_required
-def list_meal():
-    meals = Meal.query.filter_by(user_id=current_user.id).all()
-
-    return jsonify([
-        {
-            "id": meal.id,
-            "name": meal.name,
-            "description": meal.description,
-            "datetime": meal.datetime.strftime("%Y-%m-%d %H:%M:%S"),
-            "is_on_diet": meal.is_on_diet
-        }
-        for meal in meals
-    ])
+    return jsonify({"message": "Meal created", "meal_id": meal.id}), 201
 
 @app.route("/meal/<int:meal_id>", methods=["GET"])
 @login_required
 def check_meal(meal_id):
-    from models.user import Meal
 
     meal = Meal.query.get(meal_id)
 
@@ -137,27 +125,23 @@ def check_meal(meal_id):
 @app.route("/user/<int:user_id>/meals", methods=["GET"])
 @login_required
 def get_user_meals(user_id):
-    from models.user import Meal, User
 
     user = User.query.get(user_id)
     if not user:
         return jsonify({"message": "User not found"}), 404
 
-    # Só deixa o usuário acessar as próprias refeições, ou admin acessar qualquer um
     if current_user.id != user_id and current_user.role != "admin":
         return jsonify({"message": "Not authorized"}), 403
 
     meals = Meal.query.filter_by(user_id=user_id).all()
 
-    meals_list = []
-    for meal in meals:
-        meals_list.append({
-            "id": meal.id,
-            "name": meal.name,
-            "description": meal.description,
-            "datetime": meal.datetime.strftime("%Y-%m-%d %H:%M:%S"),
-            "is_on_diet": meal.is_on_diet,
-        })
+    meals_list = [{
+        "id": meal.id,
+        "name": meal.name,
+        "description": meal.description,
+        "datetime": meal.datetime.isoformat(),
+        "is_on_diet": meal.is_on_diet,
+    } for meal in meals]
 
     return jsonify({"meals": meals_list}), 200
 
@@ -183,7 +167,6 @@ def update_user(id_user):
 @app.route("/meal/<int:meal_id>", methods=["PUT"])
 @login_required
 def edit_meal(meal_id):
-    from models.user import Meal
     data = request.json
 
     meal = Meal.query.get(meal_id)
@@ -200,7 +183,6 @@ def edit_meal(meal_id):
         meal.description = data["description"]
     if "datetime" in data:
         try:
-            from datetime import datetime
             meal.datetime = datetime.strptime(data["datetime"], "%Y-%m-%d %H:%M:%S")
         except ValueError:
             return jsonify({"message": "Invalid datetime format. Use YYYY-MM-DD HH:MM:SS"}), 400
@@ -223,6 +205,21 @@ def clear_user_description(id_user):
     user.description = None
     db.session.commit()
     return jsonify({"message": f"Description of user {id_user} cleared successfully"}), 200
+
+@app.route("/meal/<int:meal_id>", methods=["DELETE"])
+@login_required
+def delete_meal(meal_id):
+    meal = Meal.query.get(meal_id)
+
+    if not meal:
+        return jsonify({"message": "Meal not found"}), 404
+
+    if meal.user_id != current_user.id:
+        return jsonify({"message": "Not authorized"}), 403
+
+    db.session.delete(meal)
+    db.session.commit()
+    return jsonify({"message": f"Meal {meal_id} deleted successfully"}), 200
 
 @app.route("/user/<int:id_user>", methods=["DELETE"])
 @login_required
