@@ -15,8 +15,6 @@ login_manager.init_app(app)
 # View login
 login_manager.login_view = "login"
 
-# Session <- conexao ativa
-
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -56,7 +54,7 @@ def login():
 
         if user:
             login_user(user)
-            print(current_user.is_authenticated)  # Corrigido
+            print(current_user.is_authenticated)
             return jsonify({"message": "Authentication completed successfully"})
 
     return jsonify({"message": "Invalid credentials"}), 400
@@ -73,10 +71,9 @@ def create_meal():
 
     data = request.get_json()
 
-    # Validação básica
     name = data.get("name")
     description = data.get("description")
-    datetime_str = data.get("datetime")  # Espera string ISO, ex: "2025-06-29T08:30:00"
+    datetime_str = data.get("datetime")
     is_on_diet = data.get("is_on_diet", False)
 
     if not name or not datetime_str:
@@ -87,7 +84,6 @@ def create_meal():
     except ValueError:
         return jsonify({"message": "Invalid datetime format"}), 400
 
-    # Cria o objeto meal associado ao current_user.id
     meal = Meal(
         name=name,
         description=description,
@@ -110,7 +106,6 @@ def check_meal(meal_id):
     if not meal:
         return jsonify({"message": "Meal not found"}), 404
 
-    # Garante que o usuário só pode acessar suas próprias refeições
     if meal.user_id != current_user.id:
         return jsonify({"message": "Not authorized"}), 403
 
